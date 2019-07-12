@@ -1,4 +1,4 @@
-
+# import statements
 import vrep
 import sys
 import numpy as np
@@ -7,6 +7,7 @@ import time
 import math
 import random as r
 import csv
+
 
 # static functions not needed to be in a class
 # function for encoding the state from the different sensor states. (for Q-Table)
@@ -48,23 +49,24 @@ def e_greedy(epsilon):
         return False
 
 
-# function for getting the reward of a state/action pair
-def reward_policy(object_levels,target_level,object_distances,old_object_distances,target_distance,old_target_distance):
+# function for getting the reward of a state/action pair also returns the dynamic and static variables
+def reward_policy(object_levels, target_level, object_distances, old_object_distances, target_distance, old_target_distance):
     static = (np.min(object_levels) - 2) + (1/5)*(5 - target_level)
     dynamic = (2*(np.min(object_distances) - np.min(old_object_distances)) + (old_target_distance - target_distance))
     reward = 4*dynamic + static
     return reward,static,dynamic
 
 
+# function for normalizing the x and y components of our vector
 def normalize(vec):
     max_val = math.sqrt(vec[0]**2+vec[1]**2)
 
-    if (max_val) == 0:
-       return vec
+    if max_val == 0:
+        return vec
 
     else:
-        vec[0] = vec[0]/(max_val)
-        vec[1] = vec[1]/(max_val)
+        vec[0] = vec[0]/max_val
+        vec[1] = vec[1]/max_val
         return vec
 
 
@@ -78,7 +80,6 @@ class Drone:
                                                                        vrep.simx_opmode_blocking)
         # member variable for the target of the drone (for moving the drone)
 
-
         self.returnCode, self.target_handle = vrep.simxGetObjectHandle(clientID,"Quadricopter_target",
                                                                        vrep.simx_opmode_blocking)
         # member variables for sensors
@@ -90,7 +91,7 @@ class Drone:
                                                                      vrep.simx_opmode_blocking)
         self.returnCode, self.right_sensor = vrep.simxGetObjectHandle(clientID, "Quad_right_sensor",
                                                                       vrep.simx_opmode_blocking)
-        # member variable for the handle of the goal target for the drone
+        # member variable for the targets of the drone
         self.returnCode, self.target1 = vrep.simxGetObjectHandle(clientID, "Goal1",
                                                                  vrep.simx_opmode_blocking)
 
@@ -102,16 +103,21 @@ class Drone:
 
         self.returnCode, self.target4 = vrep.simxGetObjectHandle(clientID, "Goal4",
                                                                  vrep.simx_opmode_blocking)
-
+        # select the first target randomly
         self.chosen_target = r.randint(1,4)
 
-        if self.chosen_target == 1: self.goal_handle = self.target1
-        elif self.chosen_target == 2: self.goal_handle = self.target2
-        elif self.chosen_target == 3: self.goal_handle = self.target3
-        elif self.chosen_target == 4: self.goal_handle = self.target4
+        if self.chosen_target == 1:
+            self.goal_handle = self.target1
+        elif self.chosen_target == 2:
+            self.goal_handle = self.target2
+        elif self.chosen_target == 3:
+            self.goal_handle = self.target3
+        elif self.chosen_target == 4:
+            self.goal_handle = self.target4
 
         # initialize member variable for getting the distance to the goal
-        self.returnCode, self.goal_distM = vrep.simxGetObjectPosition(clientID, self.goal_handle, self.quad, vrep.simx_opmode_streaming)
+        self.returnCode, self.goal_distM = vrep.simxGetObjectPosition(clientID, self.goal_handle, self.quad,
+                                                                      vrep.simx_opmode_streaming)
 
         # initialize member variable for getting the angle from the drone to the goal
         self.angle = math.atan2(self.goal_distM[1], self.goal_distM[0])*(180/math.pi)
@@ -120,64 +126,69 @@ class Drone:
         self.returnCode, self.position = vrep.simxGetObjectPosition(clientID, self.quad, -1, vrep.simx_opmode_streaming)
 
         # initialize variables for sensors
-        self.returnCode, self.detectionStateF, self.frontM, x2, x1 = vrep.simxReadProximitySensor(clientID,
-                                                                                                  self.front_sensor, vrep.simx_opmode_streaming)
+        self.returnCode, self.detectionStateF, self.frontM, x2, x1 = \
+            vrep.simxReadProximitySensor(clientID, self.front_sensor, vrep.simx_opmode_streaming)
 
         time.sleep(0.1)
-        self.returnCode, self.detectionStateB, self.backM, x2, x1 = vrep.simxReadProximitySensor(clientID, self.back_sensor,
-                                                                                                 vrep.simx_opmode_streaming)
+        self.returnCode, self.detectionStateB, self.backM, x2, x1 = \
+            vrep.simxReadProximitySensor(clientID, self.back_sensor, vrep.simx_opmode_streaming)
 
         time.sleep(0.1)
-        self.returnCode, self.detectionStateL, self.leftM, x2, x1 = vrep.simxReadProximitySensor(clientID,
-                                                                                                 self.left_sensor, vrep.simx_opmode_streaming)
+        self.returnCode, self.detectionStateL, self.leftM, x2, x1 = \
+            vrep.simxReadProximitySensor(clientID, self.left_sensor, vrep.simx_opmode_streaming)
 
         time.sleep(0.1)
-        self.returnCode, self.detectionStateR, self.rightM, x2, x1 = vrep.simxReadProximitySensor(clientID,
-                                                                                                  self.right_sensor,
-                                                                                             vrep.simx_opmode_streaming)
+        self.returnCode, self.detectionStateR, self.rightM, x2, x1 = \
+            vrep.simxReadProximitySensor(clientID, self.right_sensor, vrep.simx_opmode_streaming)
 
     # method for updating sensors
     def update_sensor(self):
 
         time.sleep(0.1)
-        self.returnCode, self.detectionStateF, self.frontM, x2, x1 = vrep.simxReadProximitySensor(self.clientID, self.front_sensor, vrep.simx_opmode_streaming)
+        self.returnCode, self.detectionStateF, self.frontM, x2, x1 = \
+            vrep.simxReadProximitySensor(self.clientID, self.front_sensor, vrep.simx_opmode_buffer)
         # if not detecting the object set the dist to 2.0
         if not self.detectionStateF:
             self.frontM = 2.0
+
         time.sleep(0.1)
-        self.returnCode, self.detectionStateB, self.backM, x2, x1 = vrep.simxReadProximitySensor(self.clientID, self.back_sensor, vrep.simx_opmode_streaming)
+        self.returnCode, self.detectionStateB, self.backM, x2, x1 = \
+            vrep.simxReadProximitySensor(self.clientID, self.back_sensor, vrep.simx_opmode_buffer)
         if not self.detectionStateB:
             self.backM = 2.0
 
         time.sleep(0.1)
-        self.returnCode, self.detectionStateL, self.leftM, x2, x1 = vrep.simxReadProximitySensor(self.clientID, self.left_sensor, vrep.simx_opmode_streaming)
+        self.returnCode, self.detectionStateL, self.leftM, x2, x1 = \
+            vrep.simxReadProximitySensor(self.clientID, self.left_sensor, vrep.simx_opmode_buffer)
         if not self.detectionStateL:
             self.leftM = 2.0
+
         time.sleep(0.1)
-        self.returnCode, self.detectionStateR, self.rightM, x2, x1 = vrep.simxReadProximitySensor(self.clientID, self.right_sensor, vrep.simx_opmode_streaming)
+        self.returnCode, self.detectionStateR, self.rightM, x2, x1 = \
+            vrep.simxReadProximitySensor(self.clientID, self.right_sensor, vrep.simx_opmode_buffer)
         if not self.detectionStateR:
             self.rightM = 2.0
-    # method for updating position
 
+    # method for updating position
     def update_pos(self):
-        self.position = self.returnCode, self.position = vrep.simxGetObjectPosition(self.clientID, self.quad, -1, vrep.simx_opmode_streaming)
+        self.position = self.returnCode, self.position = \
+            vrep.simxGetObjectPosition(self.clientID, self.quad, -1, vrep.simx_opmode_buffer)
 
     # method for updating the goal distance
     def update_goal_dist(self):
-        # if drone is close to current target
+        self.returnCode, self.goal_distM = \
+            vrep.simxGetObjectPosition(self.clientID, self.goal_handle, self.quad, vrep.simx_opmode_buffer)
 
-        self.returnCode, self.goal_distM = vrep.simxGetObjectPosition(self.clientID, self.goal_handle, self.quad, vrep.simx_opmode_streaming)
-
+    # method for updating the current target of drone if closer than 3 meters, change the target
     def update_target(self):
         if np.linalg.norm(self.get_goal_dist()) < 3.0:
-            new_target = r.randint(1,4)
-            # The get_goal_dist() is not working right
+            new_target = r.randint(1, 4)
             # if the chosen target is the same as new target, recursively call to get a new target
             if self.chosen_target == new_target:
                 self.update_target()
             # set chosen target to new target
             self.chosen_target = new_target
-
+            # set the target handle to the new target
             if new_target == 1: self.goal_handle = self.target1
             elif new_target == 2: self.goal_handle = self.target2
             elif new_target == 3: self.goal_handle = self.target3
@@ -189,7 +200,6 @@ class Drone:
 
 # methods for getting the sensor measurements and the states of the sensors
     def get_right_sense(self):
-
         return self.rightM
 
     def get_right_state(self):
@@ -303,7 +313,7 @@ class Drone:
         if self.detectionStateF:
             front_vec = self.get_front_sense()
             x = front_vec[2]; y = front_vec[0]; z = front_vec[1]
-            new_vec = np.array([x,y,z])
+            new_vec = np.array([x, y, z])
             object_list.append(new_vec)
         # back sensor
         if self.detectionStateB:
@@ -328,9 +338,9 @@ class Drone:
 
         # for each vector in the list, append the distance to the distance array
         for dist_vec in object_list:
-            object_dist_list = np.append(object_dist_list,np.linalg.norm(dist_vec))
+            object_dist_list = np.append(object_dist_list, np.linalg.norm(dist_vec))
         if object_dist_list.size == 0:
-            return np.array([0,0,0])
+            return np.array([0, 0, 0])
 
         else:
             # find the index of the min distance
@@ -341,7 +351,7 @@ class Drone:
     # method for setting drone target (for moving drone)
     def set_target(self, x, y, z):
         self.returnCode = vrep.simxSetObjectPosition(self.clientID, self.target_handle, self.quad, (x, y, z),
-                                                         vrep.simx_opmode_oneshot)
+                                                     vrep.simx_opmode_oneshot)
 
     # method for moving the drone
     # action = 0,1,2,3 corresponds to towards, 90 left, 90 right, and 180 in direction of object
@@ -350,8 +360,9 @@ class Drone:
 
         if action == 0:
             # if action is 0 but the sensor is 0 don't move the drone. else, move like normal
-            if (self.get_front_state() == 0 or self.get_right_state() == 0 or self.get_back_state() == 0 or self.get_left_state() == 0):
-                self.set_target(0,0,0)
+            if (self.get_front_state() == 0 or self.get_right_state() == 0 or self.get_back_state() == 0 or
+                    self.get_left_state() == 0):
+                self.set_target(0, 0, 0)
             else:
                 norm = normalize(self.get_closest_object())
                 x = how_far*norm[0]
@@ -409,7 +420,6 @@ class Drone:
             self.set_target(x, y, 0)
 
 
-
 # class for the Q-Table
 # action = 0,1,2,3 corresponds to towards, 90 left, 90 right, and 180 in direction of object
 # action = 4,5,6,7 corresponds to towards, 90 left, 90 right, and 180 in direction of goal
@@ -420,16 +430,19 @@ class QTable:
         self.actions = actions
         self.alpha = alpha
         self.gamma = gamma
-        self.QTable = np.zeros((states,actions))
+        self.QTable = np.zeros((states, actions))
+        self.countTable = np.zeros((states, actions))
 
-    def update_q(self,old_pos,action,reward,new_pos):
+    def update_q(self, old_pos, action, reward, new_pos):
         q_new = (1 - self.alpha)*self.QTable[old_pos][action] + self.alpha*(reward + self.gamma*self.QTable[new_pos].max())
         self.QTable[old_pos][action] = q_new
+        self.countTable[old_pos][action] += 1
 
     def display(self):
         print(self.QTable)
 
-
+    def displayCountTablw(self):
+        print(self.countTable)
 
 
 def main():
@@ -459,28 +472,16 @@ def main():
     # create object for Q-Table
     Q1 = QTable(states, actions, alpha, gamma)
 
-    # Step 1 take in information and identify status
-    '''while True:
-        ron.update_sensor()
-        ron.update_sensor()
-        ron.update_pos()
-        ron.update_goal_dist()
-        ron.update_goal_angle()
-        ron.move_drone(7,0.2)'''
-
 
 # create an array for the history of Q values
-    history = np.zeros((1000,13))
+    history = np.zeros((20, 14))
 
-    for i in range(1000):
-        #if count > 7:
-        #count = 6
+    # run loop for controlling the drone
+    for i in range(20):
 
         # identify current state
         old_state = state_encoder(ron.get_front_state(), ron.get_right_state(), ron.get_left_state(),
-                                      ron.get_back_state(), ron.get_goal_dist_state(), ron.get_goal_angle_state())
-
-
+                                  ron.get_back_state(), ron.get_goal_dist_state(), ron.get_goal_angle_state())
 
         # explore or exploit
         if e_greedy(epsilon):
@@ -494,14 +495,14 @@ def main():
                 if ron.object_detected():
                     action = r.randint(0, 7)
                 else:
-                    action = r.randint(4,7)
+                    action = r.randint(4, 7)
 
             # else, select the max Q-value
             else:
                 if ron.object_detected():
                     action = Q1.QTable[old_state].argmax()
                 else:
-                    possible_actions = np.array([-100,-100,-100,-100,Q1.QTable[old_state][4], Q1.QTable[old_state][5],Q1.QTable[old_state][6],Q1.QTable[old_state][7]])
+                    possible_actions = np.array([-100, -100, -100, -100, Q1.QTable[old_state][4], Q1.QTable[old_state][5], Q1.QTable[old_state][6], Q1.QTable[old_state][7]])
                     action = possible_actions.argmax()
         else:
             print("RANDOM")
@@ -517,11 +518,11 @@ def main():
         old_object_dist_vec = np.array([np.linalg.norm(ron.get_front_sense()), np.linalg.norm(ron.get_left_sense()),
                                         np.linalg.norm(ron.get_back_sense()), np.linalg.norm(ron.get_right_sense())])
 
-        # Step 2 move drone based on action
+        # move drone based on action
         ron.move_drone(action, movement_distance)
         time.sleep(1)
 
-        # step 3 update sensors and identify new state
+        # update sensors and identify new state
         ron.update_sensor()
         ron.update_pos()
         ron.update_goal_dist()
@@ -529,9 +530,10 @@ def main():
         ron.update_target()
 
         # create vector of object state levels and object distances
-        obj_lev_vec = np.array([ron.get_front_state(),ron.get_left_state(),ron.get_back_state(),ron.get_right_state()])
-        obj_dist_vec = np.array([np.linalg.norm(ron.get_front_sense()),np.linalg.norm(ron.get_left_sense()),
-                                 np.linalg.norm(ron.get_back_sense()),np.linalg.norm(ron.get_right_sense())])
+        obj_lev_vec = np.array([ron.get_front_state(), ron.get_left_state(), ron.get_back_state(),
+                                ron.get_right_state()])
+        obj_dist_vec = np.array([np.linalg.norm(ron.get_front_sense()), np.linalg.norm(ron.get_left_sense()),
+                                 np.linalg.norm(ron.get_back_sense()), np.linalg.norm(ron.get_right_sense())])
 
         # assess new state
         new_state = state_encoder(ron.get_front_state(), ron.get_right_state(), ron.get_left_state(),
@@ -539,14 +541,14 @@ def main():
 
         # calculate the reward
         # if the action is 0 and the object state is 0 then set a negative reward. else, be normal
-        if (action == 0 and (ron.get_front_state() == 0 or ron.get_right_state() == 0 or ron.get_back_state() == 0 or ron.get_left_state() == 0)):
+        if action == 0 and (ron.get_front_state() == 0 or ron.get_right_state() == 0 or ron.get_back_state() == 0 or ron.get_left_state() == 0):
             reward = -2.0
             static = -2.0
             dynamic = 0.0
 
         else:
 
-            reward,static,dynamic = reward_policy(obj_lev_vec, ron.get_goal_dist_state(), obj_dist_vec, old_object_dist_vec, np.linalg.norm(ron.get_goal_dist()), old_goal_dist)
+            reward, static, dynamic = reward_policy(obj_lev_vec, ron.get_goal_dist_state(), obj_dist_vec, old_object_dist_vec, np.linalg.norm(ron.get_goal_dist()), old_goal_dist)
 
         # step 4 update Q-Table based reward policy
         print("Action: ", action)
@@ -561,20 +563,23 @@ def main():
         print()
         Q1.update_q(old_state,action,reward,new_state)
 
-        # add the old state, action, static, dynamic, reward, and Q-values to the history array
+        # add the old state, action, static, dynamic, reward, Q-values, and the count of state/actions pairs
+        # to the history array
         history[i][0] = old_state
         history[i][1] = action
-        history[i][2] = static
-        history[i][3] = dynamic
-        history[i][4] = reward
-        history[i][5] = Q1.QTable[old_state][0]
-        history[i][6] = Q1.QTable[old_state][1]
-        history[i][7] = Q1.QTable[old_state][2]
-        history[i][8] = Q1.QTable[old_state][3]
-        history[i][9] = Q1.QTable[old_state][4]
-        history[i][10] = Q1.QTable[old_state][5]
-        history[i][11] = Q1.QTable[old_state][6]
-        history[i][12] = Q1.QTable[old_state][7]
+        history[i][2] = Q1.countTable[old_state][action]
+        history[i][3] = static
+        history[i][4] = dynamic
+        history[i][5] = reward
+        history[i][6] = Q1.QTable[old_state][0]
+        history[i][7] = Q1.QTable[old_state][1]
+        history[i][8] = Q1.QTable[old_state][2]
+        history[i][9] = Q1.QTable[old_state][3]
+        history[i][10] = Q1.QTable[old_state][4]
+        history[i][11] = Q1.QTable[old_state][5]
+        history[i][12] = Q1.QTable[old_state][6]
+        history[i][13] = Q1.QTable[old_state][7]
+
 
         print("Current iteration = ", i)
 
