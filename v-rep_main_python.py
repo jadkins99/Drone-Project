@@ -51,9 +51,9 @@ def e_greedy(epsilon):
 
 # function for getting the reward of a state/action pair also returns the dynamic and static variables
 def reward_policy(object_levels, target_level, object_distances, old_object_distances, target_distance, old_target_distance):
-    static = (np.min(object_levels) - 2) + (1/4)*(4 - target_level)
-    dynamic = (3*(np.min(object_distances) - np.min(old_object_distances)) + (old_target_distance - target_distance))
-    reward = 4*dynamic + static
+    static = (np.min(object_levels) - 1) + (1/4)*(4 - target_level)
+    dynamic = (2*(np.min(object_distances) - np.min(old_object_distances)) + (old_target_distance - target_distance))
+    reward = 2*dynamic + 0.5*static
     return reward,static,dynamic
 
 
@@ -188,7 +188,7 @@ class Drone:
 
     # method for updating the current target of drone if closer than 3 meters, change the target
     def update_target(self):
-        if np.linalg.norm(self.get_goal_dist()) < 3.0:
+        if np.linalg.norm(self.get_goal_dist()) < 4.0:
             new_target = r.randint(1, 4)
             # if the chosen target is the same as new target, recursively call to get a new target
             if self.chosen_target == new_target:
@@ -311,7 +311,6 @@ class Drone:
         if self.detectionStateF or self.detectionStateB or self.detectionStateL or self.detectionStateR:
             return True
 
-
     # method for returning the closest object
     def get_closest_object(self):
         object_list = []
@@ -403,10 +402,24 @@ class Drone:
             self.set_target(x, y, 0.0)
 
         elif action == 4:
-            norm = normalize(self.get_goal_dist())
-            x = how_far*norm[0]
-            y = how_far*norm[1]
-            self.set_target(x, y, 0.0)
+            # if the object is in the same direction of the target and the target is close, then dont move
+            if self.get_goal_angle_state == 0 and self.get_front_state == 0:
+                self.set_target(0.0,0.0,0.0)
+
+            elif self.get_goal_angle_state == 1 and self.get_left_state == 0:
+                self.set_target(0.0,0.0,0.0)
+
+            elif self.get_goal_angle_state == 2 and self.get_back_state == 0:
+                self.set_target(0.0,0.0,0.0)
+
+            elif self.get_goal_angle_state == 3 and self.get_right_state == 0:
+                self.set_target(0.0,0.0,0.0)
+
+            else:
+                norm = normalize(self.get_goal_dist())
+                x = how_far*norm[0]
+                y = how_far*norm[1]
+                self.set_target(x, y, 0.0)
 
         elif action == 5:
             norm = normalize(self.get_goal_dist())
@@ -472,12 +485,12 @@ def main():
     # 3*3*3*3*5*4 = 1620, 8 actions
     states = 1620
     actions = 8
-    alpha = 0.5
+    alpha = 0.3
     gamma = 0.1
     epsilon = 0.25
     movement_distance = 0.2
     eGreedy = False
-    k = 8
+    k = 4
     # create object for drone
     ron = Drone(clientID)
 
@@ -486,10 +499,12 @@ def main():
 
 
 # create an array for the history of Q values
-    history = np.zeros((10000, 14))
+    history = np.zeros((3000, 23))
+
+    possible_actions = np.array([])
 
     # run loop for controlling the drone
-    for i in range(10000):
+    for i in range(3000):
 
         # identify current state
         old_state = state_encoder(ron.get_front_state(), ron.get_right_state(), ron.get_left_state(),
@@ -551,6 +566,8 @@ def main():
                 # for each possible action, adjust for the number of times it has been used
                 for j in range(0, len(possible_actions)):
                     possible_actions[j] += k/(1 + Q1.countTable[old_state][j])
+                    # add the exploration value to the history for recording
+                    history[i][j + 15] = possible_actions[j]
                 # pick the max action
                 action = possible_actions.argmax()
 
@@ -587,47 +604,72 @@ def main():
             reward = -2.0
             static = -2.0
             dynamic = 0.0
+        # if the action is 4 and the obstacle is in the way of the target
+        elif action == 4 and (ron.get_front_state() == 0 and ron.get_goal_angle_state() == 0):
+            reward = -2.0
+            static = -2.0
+            dynamic = 0.0
+
+        elif action == 4 and (ron.get_left_state() == 0 and ron.get_goal_angle_state() == 1):
+            reward = -2.0
+            static = -2.0
+            dynamic = 0.0
+
+        elif action == 4 and (ron.get_back_state() == 0 and ron.get_goal_angle_state() == 2):
+            reward = -2.0
+            static = -2.0
+            dynamic = 0.0
+
+        elif action == 4 and (ron.get_right_state() == 0 and ron.get_goal_angle_state() == 3):
+            reward = -2.0
+            static = -2.0
+            dynamic = 0.0
+
 
         else:
 
             reward, static, dynamic = reward_policy(obj_lev_vec, ron.get_goal_dist_state(), obj_dist_vec, old_object_dist_vec, np.linalg.norm(ron.get_goal_dist()), old_goal_dist)
 
         # step 4 update Q-Table based reward policy
-        print("Action: ", action)
-        print("old Dist: ", old_goal_dist)
-        print("New Dist: ", np.linalg.norm(ron.get_goal_dist()))
-        print("Old State = ",old_state,", New State = ",new_state)
-        print("Static: ",static)
-        print("Dynamic: ",dynamic)
-        print("Reward: ",reward)
-        print("Q-Values: ",Q1.QTable[old_state])
-        print("Target: ",ron.chosen_target)
-        #print("State 1619: ",Q1.QTable[1619])
-        # print("Target Position: ",vrep.simxGetObjectPosition(clientID, ron.target_handle, ron.quad, vrep.simx_opmode_streaming))
-        print()
+
         Q1.update_q(old_state,action,reward,new_state)
 
         # add the old state, action, static, dynamic, reward, Q-values, and the count of state/actions pairs
         # to the history array
-        history[i][0] = old_state
-        history[i][1] = action
-        history[i][2] = Q1.countTable[old_state][action]
-        history[i][3] = static
-        history[i][4] = dynamic
-        history[i][5] = reward
-        history[i][6] = Q1.QTable[old_state][0]
-        history[i][7] = Q1.QTable[old_state][1]
-        history[i][8] = Q1.QTable[old_state][2]
-        history[i][9] = Q1.QTable[old_state][3]
-        history[i][10] = Q1.QTable[old_state][4]
-        history[i][11] = Q1.QTable[old_state][5]
-        history[i][12] = Q1.QTable[old_state][6]
-        history[i][13] = Q1.QTable[old_state][7]
+        history[i][0] = i
+        history[i][1] = old_state
+        history[i][2] = action
+        history[i][3] = Q1.countTable[old_state][action]
+        history[i][4] = static
+        history[i][5] = dynamic
+        history[i][6] = reward
+        history[i][7] = Q1.QTable[old_state][0]
+        history[i][8] = Q1.QTable[old_state][1]
+        history[i][9] = Q1.QTable[old_state][2]
+        history[i][10] = Q1.QTable[old_state][3]
+        history[i][11] = Q1.QTable[old_state][4]
+        history[i][12] = Q1.QTable[old_state][5]
+        history[i][13] = Q1.QTable[old_state][6]
+        history[i][14] = Q1.QTable[old_state][7]
+
 
 
         print("Current iteration = ", i)
+        print("Action: ", action)
+        print("old Dist: ", old_goal_dist)
+        print("New Dist: ", np.linalg.norm(ron.get_goal_dist()))
+        print("Old State = ", old_state, ", New State = ", new_state)
+        print("Static: ", static)
+        print("Dynamic: ", dynamic)
+        print("Reward: ", reward)
+        print("Q-Values: ", Q1.QTable[old_state])
+        print("Target: ", ron.chosen_target)
+        print("Exploration values: ", possible_actions)
+        # print("State 1619: ",Q1.QTable[1619])
+        # print("Target Position: ",vrep.simxGetObjectPosition(clientID, ron.target_handle, ron.quad, vrep.simx_opmode_streaming))
+        print()
 
-    with open("history2.csv",'w') as writeFile:
+    with open("history3.csv",'w') as writeFile:
         writer = csv.writer(writeFile)
         writer.writerows(history)
 
