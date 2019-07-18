@@ -173,13 +173,15 @@ class Drone:
     def update_pos(self):
         self.position = self.returnCode, self.position = \
             vrep.simxGetObjectPosition(self.clientID, self.quad, -1, vrep.simx_opmode_streaming)
-        if self.position[2] < 3.0:
+        '''if self.position[2] < 3.0:
             self.returnCode = vrep.simxSetObjectPosition(self.clientID, self.target_handle, -1, (self.position[0], self.position[1], 3.0),
                                                          vrep.simx_opmode_oneshot)
+            time.sleep(0.5)
         elif self.position[2] > 3.0:
             self.returnCode = vrep.simxSetObjectPosition(self.clientID, self.target_handle, -1,
                                                          (self.position[0], self.position[1], 3.0),
                                                          vrep.simx_opmode_oneshot)
+            time.sleep(0.5)'''
 
     # method for updating the goal distance
     def update_goal_dist(self):
@@ -371,12 +373,12 @@ class Drone:
             # if action is 0 but the sensor is 0 don't move the drone. else, move like normal
             if (self.get_front_state() == 0 or self.get_right_state() == 0 or self.get_back_state() == 0 or
                     self.get_left_state() == 0):
-                self.set_target(0.0, 0.0, 0.0)
+                self.set_target(0.0, 0.0, 3 - self.get_pos()[2])
             else:
                 norm = normalize(self.get_closest_object())
                 x = how_far*norm[0]
                 y = how_far*norm[1]
-                self.set_target(x, y, 0.0)
+                self.set_target(x, y, 3 - self.get_pos()[2])
 
         elif action == 1:
             norm = normalize(self.get_closest_object())
@@ -385,62 +387,62 @@ class Drone:
             # change vector by 90 degrees
             x = -how_far*norm[1]
             y = how_far*norm[0]
-            self.set_target(x, y, 0.0)
+            self.set_target(x, y, 3 - self.get_pos()[2])
 
         elif action == 2:
             norm = normalize(self.get_closest_object())
             # change vector by -90 degrees
             x = how_far * norm[1]
             y = -1*how_far * norm[0]
-            self.set_target(x, y, 0.0)
+            self.set_target(x, y, 3 - self.get_pos()[2])
 
         elif action == 3:
             norm = normalize(self.get_closest_object())
             # change vector by 180 degrees
             x = -1*how_far * norm[0]
             y = -1*how_far * norm[1]
-            self.set_target(x, y, 0.0)
+            self.set_target(x, y, 3 - self.get_pos()[2])
 
         elif action == 4:
             # if the object is in the same direction of the target and the target is close, then dont move
             if self.get_goal_angle_state == 0 and self.get_front_state == 0:
-                self.set_target(0.0,0.0,0.0)
+                self.set_target(0.0,0.0,3 - self.get_pos()[2])
 
             elif self.get_goal_angle_state == 1 and self.get_left_state == 0:
-                self.set_target(0.0,0.0,0.0)
+                self.set_target(0.0,0.0,3 - self.get_pos()[2])
 
             elif self.get_goal_angle_state == 2 and self.get_back_state == 0:
-                self.set_target(0.0,0.0,0.0)
+                self.set_target(0.0,0.0,3 - self.get_pos()[2])
 
             elif self.get_goal_angle_state == 3 and self.get_right_state == 0:
-                self.set_target(0.0,0.0,0.0)
+                self.set_target(0.0,0.0,3 - self.get_pos()[2])
 
             else:
                 norm = normalize(self.get_goal_dist())
                 x = how_far*norm[0]
                 y = how_far*norm[1]
-                self.set_target(x, y, 0.0)
+                self.set_target(x, y, 3 - self.get_pos()[2])
 
         elif action == 5:
             norm = normalize(self.get_goal_dist())
             # change vector by 90 degrees
             x = -1*how_far * norm[1]
             y = how_far * norm[0]
-            self.set_target(x, y, 0.0)
+            self.set_target(x, y, 3 - self.get_pos()[2])
 
         elif action == 6:
             # change vector by -90 degrees
             norm = normalize(self.get_goal_dist())
             x = how_far * norm[1]
             y = -1*how_far * norm[0]
-            self.set_target(x, y, 0.0)
+            self.set_target(x, y, 3 - self.get_pos()[2])
 
         elif action == 7:
             # change vector by 180 degrees
             norm = normalize(self.get_goal_dist())
             x = -1*how_far * norm[0]
             y = -1*how_far * norm[1]
-            self.set_target(x, y, 0.0)
+            self.set_target(x, y, 3 - self.get_pos()[2])
 
 
 # class for the Q-Table
@@ -499,16 +501,19 @@ def main():
 
 
 # create an array for the history of Q values
-    history = np.zeros((3000, 23))
+    history = np.zeros((10000, 23))
 
     possible_actions = np.array([])
 
     # run loop for controlling the drone
-    for i in range(3000):
+    for i in range(10000):
 
         # identify current state
         old_state = state_encoder(ron.get_front_state(), ron.get_right_state(), ron.get_left_state(),
                                   ron.get_back_state(), ron.get_goal_dist_state(), ron.get_goal_angle_state())
+
+        # create boolean variable to tell if an object is detected in the old state
+        old_state_object_detect = ron.object_detected()
 
         # if exploration is e-greedy
         if eGreedy:
@@ -598,6 +603,9 @@ def main():
         new_state = state_encoder(ron.get_front_state(), ron.get_right_state(), ron.get_left_state(),
                                   ron.get_back_state(), ron.get_goal_dist_state(), ron.get_goal_angle_state())
 
+        # create a boolean variable to detect if objects are detected in the new state
+        new_state_object_detect = ron.object_detected()
+
         # calculate the reward
         # if the action is 0 and the object state is 0 then set a negative reward. else, be normal
         if action == 0 and (ron.get_front_state() == 0 or ron.get_right_state() == 0 or ron.get_back_state() == 0 or ron.get_left_state() == 0):
@@ -632,7 +640,16 @@ def main():
 
         # step 4 update Q-Table based reward policy
 
-        Q1.update_q(old_state,action,reward,new_state)
+        # if an object is there is a change in objects being detected then don't update Q
+        if old_state_object_detect == new_state_object_detect:
+            # then update Q
+            Q1.update_q(old_state,action,reward,new_state)
+
+        # if the old state is detecting an object and the new state is not detecting an object then update Q
+        # The issue is that if the old state is not detecting and then the new state is detecting then don't update
+        elif (old_state_object_detect == True) and (new_state_object_detect == False):
+            # then update Q
+            Q1.update_q(old_state, action, reward, new_state)
 
         # add the old state, action, static, dynamic, reward, Q-values, and the count of state/actions pairs
         # to the history array
