@@ -8,7 +8,7 @@ import math
 import random as r
 import csv
 
-
+#test
 # static functions not needed to be in a class
 # function for encoding the state from the different sensor states. (for Q-Table)
 def state_encoder(fs,rs,ls,bs,tl,td):
